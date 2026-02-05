@@ -25,10 +25,8 @@ def count_term_frequency(dataset="passage-collection.txt"):
   term_frequency = {}
   for word in words:
     word = word.lower()
-    if word in term_frequency:
-      term_frequency[word] += 1
-    else:
-      term_frequency[word] = 1
+    term_frequency[word] = term_frequency.get(word, 0) + 1
+
 
   return term_frequency
 
@@ -42,8 +40,8 @@ if __name__ == "__main__":
     ranked_terms = sorted(tf.items(), key=lambda x: x[1], reverse=True)
     rows = []
 
-    LIMIT = 50
-    for rank, (term, freq) in enumerate(ranked_terms[:LIMIT], start=1):
+
+    for rank, (term, freq) in enumerate(ranked_terms, start=1):
         normalised_occurrence = (freq / len(tf)) / 100
 
         rows.append({
@@ -55,15 +53,15 @@ if __name__ == "__main__":
         })
 
     df = pd.DataFrame(rows)
-    print(df)
-"""
-    RANK_LIMIT = 50
-    plt.figure()
-    plt.plot(ranks[0:RANK_LIMIT], occurrence_probabilities[0:RANK_LIMIT])
-    plt.xlabel("Rank")
-    plt.ylabel("Occurrence Probability")
-    plt.title("Rank vs Occurrence Probability")
-    plt.show()
-"""
+    print(df.head(10))
 
-       
+    # Figure 2: create a log log plot of Rank*Frequency vs Zipf's Law Distribution
+    plt.figure(figsize=(10, 6))
+    plt.loglog(df["Rank"], df["Normalised Frequency"], marker='o', label='Observed Data')
+    plt.loglog(df["Rank"], df["Zipf's Law Distribution"], marker='x', label="Zipf's Law", linestyle='--')
+    plt.xlabel('Rank')
+    plt.ylabel('Normalised Frequency')
+    plt.title("Zipf's Law: Term Frequency vs Rank")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
