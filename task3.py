@@ -70,7 +70,7 @@ def calculate_cosine_similarity(big_n, test_queries):
 
     return cosine_scores
 
-def output_results(cosine_scores, test_queries):
+def output_d6_results(cosine_scores, test_queries):
 
     output = []
     qids = test_queries["qid"].tolist()
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     big_n = calculate_big_n(task2.COLLECTION)
 
     cosine_scores = calculate_cosine_similarity(big_n, test_queries)
-    tf_idfs = output_results(cosine_scores, test_queries)
+    tf_idfs = output_d6_results(cosine_scores, test_queries)
     tf_idfs.to_csv(TFIDF_OUTPUT_FILE, index=False, header=False) # no headers
 
 
