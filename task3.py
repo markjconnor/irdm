@@ -59,14 +59,9 @@ def calculate_cosine_similarity(big_n, test_queries):
     candidate_passages = pd.read_csv(task2.COLLECTION, sep='\t', header=None)
     candidates = defaultdict(set) # qid : set of candidate pids
     for _, row in candidate_passages.iterrows():
-        qid, pid = row[0], row[1]
+        qid, pid = row[0], str(row[1])
         candidates[qid].add(pid)
 
-    # check types
-    print(type(list(candidates.keys())[0]))           
-    print(type(list(query_tfidf_vectors.keys())[0]))  
-    print(type(list(list(candidates.values())[0])[0]))
-    print(type(list(passage_tfidf_vectors.keys())[0]))
     cosine_scores = {} # (qid, pid) : cosine similarity score
     for qid, query_vector in query_tfidf_vectors.items():
 
