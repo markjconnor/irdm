@@ -34,8 +34,8 @@ def calculate_query_tfidf(big_n, test_queries):
     query_tfidf_vectors = {}  # qid : {term: tfidf}
 
     for _, row in test_queries.iterrows():
-        qid = row[0]
-        query = row[1].split()
+        qid = row["qid"]
+        query = row["text"].split()
 
         # compute query term frequencies
         query_tf = {}
@@ -92,7 +92,7 @@ if __name__ == "__main__":
 
     cosine_scores = calculate_cosine_similarity(big_n, test_queries)
     tf_idfs = output_results(cosine_scores, test_queries)
-    tf_idfs.to_csv(OUTPUT_FILE, index=False, header=False)
+    tf_idfs.to_csv(OUTPUT_FILE, index=False, header=False) # no headers
 
 
 
