@@ -17,7 +17,7 @@ def build_inverted_index():
     ******
     """
 
-    inverted_index = defaultdict(set)     # term : [(pid, tf_t)]
+    inverted_index = defaultdict(dict)     # term : {pid : tf_t}
     with open(COLLECTION, newline='') as file:
         tsv_reader = csv.reader(file, delimiter='\t')
         for row in tsv_reader:
@@ -30,7 +30,7 @@ def build_inverted_index():
                     term_frequencies[word] = term_frequencies.get(word, 0) + 1
             
             for word, tf_t in term_frequencies.items():
-                inverted_index[word].add((pid, tf_t))
+                inverted_index[word][pid] = tf_t
 
     return inverted_index
 
