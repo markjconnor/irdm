@@ -4,7 +4,7 @@ import math
 import pandas as pd
 from collections import defaultdict
 TEST_QUERIES = "test-queries.tsv"
-OUTPUT_FILE = "tfidf.csv"
+TFIDF_OUTPUT_FILE = "tfidf.csv"
 INVERTED_INDEX = task2.build_inverted_index() # word : [(pid, tf_t)]
 
 def calculate_big_n(document):
@@ -72,7 +72,7 @@ def calculate_cosine_similarity(big_n, test_queries):
 
 def output_results(cosine_scores, test_queries):
 
-    output = {}
+    output = []
     qids = test_queries["qid"].tolist()
     for qid in qids:
         # get all passages and scores for this query
@@ -80,7 +80,7 @@ def output_results(cosine_scores, test_queries):
         # sort by score and take top 100
         top_passages = sorted(passage_scores.items(), key=lambda x: x[1], reverse=True)[:100]
         for rank, (pid, score) in enumerate(top_passages, start=1):
-            output = output.append({"qid": qid, "pid": pid, "rank": rank, "score": score}, ignore_index=True)
+            output.append({"qid": qid, "pid": pid, "rank": rank, "score": score}, ignore_index=True)
 
     output_df = pd.DataFrame(output)
     return output_df
@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
     cosine_scores = calculate_cosine_similarity(big_n, test_queries)
     tf_idfs = output_results(cosine_scores, test_queries)
-    tf_idfs.to_csv(OUTPUT_FILE, index=False, header=False) # no headers
+    tf_idfs.to_csv(TFIDF_OUTPUT_FILE, index=False, header=False) # no headers
 
 
 
