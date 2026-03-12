@@ -7,3 +7,4 @@
 !test-queries.tsv
 settings.json
 *.pyc
+tfidf.csv
