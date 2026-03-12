@@ -1,3 +1,4 @@
-*.tsv
+*.png
 *.txt
 !requirements.txt
+*.tsv
