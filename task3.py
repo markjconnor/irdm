@@ -79,8 +79,8 @@ def output_results(cosine_scores, test_queries):
         passage_scores = {pid: score for (q, pid), score in cosine_scores.items() if q == qid}
         # sort by score and take top 100
         top_passages = sorted(passage_scores.items(), key=lambda x: x[1], reverse=True)[:100]
-        for rank, (pid, score) in enumerate(top_passages, start=1):
-            output.append({"qid": qid, "pid": pid, "rank": rank, "score": score}, ignore_index=True)
+        for _, (pid, score) in enumerate(top_passages, start=1):
+            output.append({"qid": qid, "pid": pid, "score": score}, ignore_index=True)
 
     output_df = pd.DataFrame(output)
     return output_df
