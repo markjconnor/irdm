@@ -55,9 +55,21 @@ def calculate_cosine_similarity(big_n, test_queries):
     # Calculate the cosine similarity between the tf-idf vectors of the queries and the passages
     query_tfidf_vectors = calculate_query_tfidf(big_n, test_queries)
     passage_tfidf_vectors = calculate_passage_tfidf(big_n)
+
+    candidate_passages = pd.read_csv(task2.COLLECTION, sep='\t', header=None)
+    candidates = defaultdict(set) # qid : set of candidate pids
+    for _, row in candidate_passages.iterrows():
+        qid, pid = row[0], row[1]
+        candidates[qid].add(pid)
+
     cosine_scores = {} # (qid, pid) : cosine similarity score
     for qid, query_vector in query_tfidf_vectors.items():
-        for pid, passage_vector in passage_tfidf_vectors.items():
+
+        candidate_pids = candidates.get(qid, set())
+        for pid in candidate_pids:
+            if pid not in passage_tfidf_vectors:
+                continue
+            passage_vector = passage_tfidf_vectors[pid]
             # calculate cosine similarity between query_vector and passage_vector
             inner_product = sum(query_vector[term] * passage_vector.get(term, 0) for term in query_vector)
             query_length = math.sqrt(sum(value ** 2 for value in query_vector.values()))
@@ -85,6 +97,8 @@ def output_d6_results(cosine_scores, test_queries):
     output_df = pd.DataFrame(output)
     return output_df
 
+def bm25():
+    pass
 
 if __name__ == "__main__":
     test_queries = pd.read_csv(TEST_QUERIES, sep='\t', header=None)
