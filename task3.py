@@ -6,6 +6,7 @@ from collections import defaultdict
 TEST_QUERIES = "test-queries.tsv"
 OUTPUT_FILE = "tfidf.csv"
 INVERTED_INDEX = task2.build_inverted_index() # word : [(pid, tf_t)]
+test_queries = pd.read_csv(TEST_QUERIES, sep='\t', header=None)
 
 def calculate_big_n(document):
     # calculate N, the number of docs in the collection
@@ -20,10 +21,9 @@ def calculate_passage_tfidf():
     inverted_index = INVERTED_INDEX  # word : [(pid, tf_t)]
     passage_tfidf_vectors = {}  # pid : {term: tfidf}
 
-    for term, postings in inverted_index.items():
-        idf_t = math.log(BIG_N / len(postings), 10)
-        #print('postings = ', postings)
-        for pid, tf_t in postings.items():
+    for term, passage_frequencies in inverted_index.items():
+        idf_t = math.log(BIG_N / len(passage_frequencies), 10)
+        for pid, tf_t in passage_frequencies.items():
             tf_idf = tf_t * idf_t
             if pid not in passage_tfidf_vectors:
                 passage_tfidf_vectors[pid] = {}
@@ -33,7 +33,7 @@ def calculate_passage_tfidf():
 
 def calculate_query_tfidf():
     BIG_N = calculate_big_n(task2.COLLECTION)  # use passage corpus N
-    test_queries = pd.read_csv(TEST_QUERIES, sep='\t', header=None)
+    
     inverted_index = INVERTED_INDEX
     query_tfidf_vectors = {}  # qid : {term: tfidf}
 
@@ -58,10 +58,8 @@ def calculate_query_tfidf():
 def calculate_cosine_similarity():
     # Calculate the cosine similarity between the TF-IDF vectors of the queries and the passages
     query_tfidf_vectors = calculate_query_tfidf()
-    print("finished calculating query tfidf vectors")
     passage_tfidf_vectors = calculate_passage_tfidf()
-    print("finished calculating passage tfidf vectors")
-    cosine_similarity_scores = {} # (qid, pid) : cosine similarity score
+    cosine_scores = {} # (qid, pid) : cosine similarity score
     for qid, query_vector in query_tfidf_vectors.items():
         for pid, passage_vector in passage_tfidf_vectors.items():
             # calculate cosine similarity between query_vector and passage_vector
@@ -72,13 +70,29 @@ def calculate_cosine_similarity():
             #print("passage_length = ", passage_length)
             if query_length > 0 and passage_length > 0:
                 cosine_similarity = inner_product / (query_length * passage_length)
-                cosine_similarity_scores[(qid, pid)] = cosine_similarity
+                cosine_scores[(qid, pid)] = cosine_similarity
 
-    return cosine_similarity_scores
+    return cosine_scores
+
+def output_results(cosine_scores):
+
+    output_df = pd.DataFrame()
+    qids = test_queries["qid"].tolist()
+    for qid in qids:
+        # get all passages and scores for this query
+        passage_scores = {pid: score for (q, pid), score in cosine_scores.items() if q == qid}
+        # sort by score and take top 100
+        top_passages = sorted(passage_scores.items(), key=lambda x: x[1], reverse=True)[:100]
+        for rank, (pid, score) in enumerate(top_passages, start=1):
+            output_df = output_df.append({"qid": qid, "pid": pid, "rank": rank, "score": score}, ignore_index=True)
+
+    return output_df
 
 
 if __name__ == "__main__":
     cosine_scores = calculate_cosine_similarity()
+    tf_idfs = output_results(cosine_scores)
+    tf_idfs.to_csv(OUTPUT_FILE, index=False)
 
 
 
