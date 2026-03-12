@@ -6,7 +6,6 @@ from collections import defaultdict
 TEST_QUERIES = "test-queries.tsv"
 OUTPUT_FILE = "tfidf.csv"
 INVERTED_INDEX = task2.build_inverted_index() # word : [(pid, tf_t)]
-test_queries = pd.read_csv(TEST_QUERIES, sep='\t', header=None)
 
 def calculate_big_n(document):
     # calculate N, the number of docs in the collection
@@ -16,13 +15,12 @@ def calculate_big_n(document):
         big_n = len(list(tsv_reader))
     return big_n
 
-def calculate_passage_tfidf():
-    BIG_N = calculate_big_n(task2.COLLECTION)
+def calculate_passage_tfidf(big_n):
     inverted_index = INVERTED_INDEX  # word : [(pid, tf_t)]
     passage_tfidf_vectors = {}  # pid : {term: tfidf}
 
     for term, passage_frequencies in inverted_index.items():
-        idf_t = math.log(BIG_N / len(passage_frequencies), 10)
+        idf_t = math.log(big_n / len(passage_frequencies), 10)
         for pid, tf_t in passage_frequencies.items():
             tf_idf = tf_t * idf_t
             if pid not in passage_tfidf_vectors:
@@ -31,9 +29,7 @@ def calculate_passage_tfidf():
 
     return passage_tfidf_vectors
 
-def calculate_query_tfidf():
-    BIG_N = calculate_big_n(task2.COLLECTION)  # use passage corpus N
-    
+def calculate_query_tfidf(big_n, test_queries):
     inverted_index = INVERTED_INDEX
     query_tfidf_vectors = {}  # qid : {term: tfidf}
 
@@ -41,24 +37,24 @@ def calculate_query_tfidf():
         qid = row[0]
         query = row[1].split()
 
-        # compute query term frequencies first
+        # compute query term frequencies
         query_tf = {}
         for term in query:
             query_tf[term] = query_tf.get(term, 0) + 1
 
-        # then compute tfidf using passage IDF
+        # compute tfidf using IDF representation from the corpus of the passages
         query_tfidf_vectors[qid] = {}
         for term, tf_q in query_tf.items():
             if term in inverted_index:
-                idf_t = math.log(BIG_N / len(inverted_index[term]), 10)
+                idf_t = math.log(big_n / len(inverted_index[term]), 10)
                 query_tfidf_vectors[qid][term] = tf_q * idf_t
 
     return query_tfidf_vectors
 
-def calculate_cosine_similarity():
-    # Calculate the cosine similarity between the TF-IDF vectors of the queries and the passages
-    query_tfidf_vectors = calculate_query_tfidf()
-    passage_tfidf_vectors = calculate_passage_tfidf()
+def calculate_cosine_similarity(big_n, test_queries):
+    # Calculate the cosine similarity between the tf-idf vectors of the queries and the passages
+    query_tfidf_vectors = calculate_query_tfidf(big_n, test_queries)
+    passage_tfidf_vectors = calculate_passage_tfidf(big_n)
     cosine_scores = {} # (qid, pid) : cosine similarity score
     for qid, query_vector in query_tfidf_vectors.items():
         for pid, passage_vector in passage_tfidf_vectors.items():
@@ -74,7 +70,7 @@ def calculate_cosine_similarity():
 
     return cosine_scores
 
-def output_results(cosine_scores):
+def output_results(cosine_scores, test_queries):
 
     output_df = pd.DataFrame()
     qids = test_queries["qid"].tolist()
@@ -90,9 +86,13 @@ def output_results(cosine_scores):
 
 
 if __name__ == "__main__":
-    cosine_scores = calculate_cosine_similarity()
-    tf_idfs = output_results(cosine_scores)
-    tf_idfs.to_csv(OUTPUT_FILE, index=False)
+    test_queries = pd.read_csv(TEST_QUERIES, sep='\t', header=None)
+    test_queries.columns = ["qid","text"]
+    big_n = calculate_big_n(task2.COLLECTION)
+
+    cosine_scores = calculate_cosine_similarity(big_n, test_queries)
+    tf_idfs = output_results(cosine_scores, test_queries)
+    tf_idfs.to_csv(OUTPUT_FILE, index=False, header=False)
 
 
 
