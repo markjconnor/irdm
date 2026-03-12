@@ -2,3 +2,8 @@
 *.txt
 !requirements.txt
 *.tsv
+!candidate-passages-top1000.tsv
+!passage-collection.txt
+!test-queries.tsv
+settings.json
+*.pyc
