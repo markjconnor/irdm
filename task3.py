@@ -72,7 +72,7 @@ def calculate_cosine_similarity(big_n, test_queries):
 
 def output_results(cosine_scores, test_queries):
 
-    output_df = pd.DataFrame()
+    output = {}
     qids = test_queries["qid"].tolist()
     for qid in qids:
         # get all passages and scores for this query
@@ -80,8 +80,9 @@ def output_results(cosine_scores, test_queries):
         # sort by score and take top 100
         top_passages = sorted(passage_scores.items(), key=lambda x: x[1], reverse=True)[:100]
         for rank, (pid, score) in enumerate(top_passages, start=1):
-            output_df = output_df.append({"qid": qid, "pid": pid, "rank": rank, "score": score}, ignore_index=True)
+            output = output.append({"qid": qid, "pid": pid, "rank": rank, "score": score}, ignore_index=True)
 
+    output_df = pd.DataFrame(output)
     return output_df
 
 
