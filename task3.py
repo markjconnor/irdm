@@ -178,6 +178,7 @@ if __name__ == "__main__":
     tf_idfs.to_csv(TFIDF_OUTPUT_FILE, index=False, header=False) # no headers
 
     bm25 = calculate_bm25(candidate_passages)
+    print(bm25)
     bm25_scores = output_results(bm25, test_queries)
     bm25_scores.to_csv("bm25.csv", index=False, header=False)
 
