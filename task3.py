@@ -105,11 +105,10 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
    
 
     #K = k1 * ((1 - b) + b * (document_length[pid] / average_document_length))
-    query_term_frequency = build_inverted_index(test_queries)
-
-    n1 = {qid: {} for qid in query_term_frequency.keys()}
-    n2 = {qid: {} for qid in query_term_frequency.keys()}
-    bm25 = {qid: {} for qid in query_term_frequency.keys()}
+    
+    n1 = {qid: {} for qid in query_candidates.keys()}
+    n2 = {qid: {} for qid in query_candidates.keys()}
+    bm25 = {qid: {} for qid in query_candidates.keys()}
 
     passages_tf = {}
 
@@ -129,14 +128,14 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
         queries_tf[qid] = term_freq
     
 
-    for qid, term_frequency in query_term_frequency.items():
+    for qid, term_frequency in queries_tf.items():
         for term in term_frequency.keys():
             if term in INVERTED_INDEX.keys():
                 n1[qid][term] = len(INVERTED_INDEX[term])
             else:
                 n1[qid][term] = 0
 
-    for qid, passages_tf in query_term_frequency.items():
+    for qid, passages_tf in queries_tf.items():
         terms = passages_tf.keys()
         for pid, tf_t in INVERTED_INDEX.values():
             for term in terms:
