@@ -137,7 +137,7 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
 
     for qid, passages_tf in queries_tf.items():
         terms = passages_tf.keys()
-        for pid, tf_t in passages_tf.values():
+        for pid, tf_t in passages_tf.items():
             for term in terms:
                 if term in  tf_t:
                     n2[qid][pid][term] = passages_tf[pid][term]
