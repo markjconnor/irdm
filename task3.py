@@ -105,7 +105,7 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
    
 
     #K = k1 * ((1 - b) + b * (document_length[pid] / average_document_length))
-    
+
     n1 = {qid: {} for qid in query_candidates.keys()}
     n2 = {qid: {} for qid in query_candidates.keys()}
     bm25 = {qid: {} for qid in query_candidates.keys()}
@@ -121,7 +121,7 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
             passages_tf[pid][term] = passages_tf[pid].get(term,0) + INVERTED_INDEX[term][pid]
 
     queries_tf = {qid: {} for qid in test_queries["qid"].tolist()}
-    for qid, query_terms in zip(test_queries["qid"].tolist(), task1.vocabulary):
+    for qid, query_terms in zip(test_queries["qid"].tolist(), task1.get_vocabulary(task1.DATASET, None)):
         term_freq = {}
         for term in query_terms:
             term_freq[term] = term_freq.get(term, 0) + 1
