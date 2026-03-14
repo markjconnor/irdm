@@ -4,7 +4,7 @@ from collections import defaultdict
 VOCAB_DATASET = task1.DATASET
 COLLECTION = "candidate-passages-top1000.tsv"
 
-def build_inverted_index():
+def build_inverted_index(dataset):
     # removing stop words because stop words that appear in many passages are less informative for retrieval (Inverse Document Frequency)
     stop_words = task1.stopwords.words('english')
     vocab = task1.get_vocabulary(VOCAB_DATASET, stop_words)   
@@ -18,7 +18,7 @@ def build_inverted_index():
     """
 
     inverted_index = defaultdict(dict)     # term : {pid : tf_t}
-    with open(COLLECTION, newline='') as file:
+    with open(dataset, newline='') as file:
         tsv_reader = csv.reader(file, delimiter='\t')
         for row in tsv_reader:
             pid = row[1]

@@ -1,11 +1,12 @@
-import task2
+import task1, task2
 import csv
 import math 
 import pandas as pd
 from collections import defaultdict
+from task2 import build_inverted_index
 TEST_QUERIES = "test-queries.tsv"
 TFIDF_OUTPUT_FILE = "tfidf.csv"
-INVERTED_INDEX = task2.build_inverted_index() # word : [(pid, tf_t)]
+INVERTED_INDEX = build_inverted_index(task2.COLLECTION) # word : [(pid, tf_t)]
 
 def calculate_big_n(document):
     # calculate N, the number of docs in the collection
@@ -51,17 +52,10 @@ def calculate_query_tfidf(big_n, test_queries):
 
     return query_tfidf_vectors
 
-def calculate_cosine_similarity(big_n, test_queries):
+def calculate_cosine_similarity(big_n, test_queries, passage_tfidf_vectors, query_tfidf_vectors, candidate_passages):
     # Calculate the cosine similarity between the tf-idf vectors of the queries and the passages
-    query_tfidf_vectors = calculate_query_tfidf(big_n, test_queries)
-    passage_tfidf_vectors = calculate_passage_tfidf(big_n)
 
-    candidate_passages = pd.read_csv(task2.COLLECTION, sep='\t', header=None)
-    candidates = defaultdict(set) # qid : set of candidate pids
-    for _, row in candidate_passages.iterrows():
-        qid, pid = row[0], str(row[1])
-        candidates[qid].add(pid)
-
+    candidates = calculate_query_candidates(candidate_passages)
     cosine_scores = {} # (qid, pid) : cosine similarity score
     for qid, query_vector in query_tfidf_vectors.items():
 
@@ -82,13 +76,21 @@ def calculate_cosine_similarity(big_n, test_queries):
 
     return cosine_scores
 
-def output_d6_results(cosine_scores, test_queries):
+def calculate_query_candidates(candidate_passages):
+    
+    candidates = defaultdict(set) # qid : set of candidate pids
+    for _, row in candidate_passages.iterrows():
+        qid, pid = row[0], str(row[1]) # ensure pid is a string for consistent key types
+        candidates[qid].add(pid)
+    return candidates
+
+def output_results(table, test_queries):
 
     output = []
     qids = test_queries["qid"].tolist()
     for qid in qids:
         # get all passages and scores for this query
-        passage_scores = {pid: score for (q, pid), score in cosine_scores.items() if q == qid}
+        passage_scores = {pid: score for (q, pid), score in table.items() if q == qid}
         # sort by score and take top 100
         top_passages = sorted(passage_scores.items(), key=lambda x: x[1], reverse=True)[:100]
         for pid, score in top_passages:
@@ -97,17 +99,87 @@ def output_d6_results(cosine_scores, test_queries):
     output_df = pd.DataFrame(output)
     return output_df
 
-def bm25():
-    pass
+def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
+    query_candidates = calculate_query_candidates(candidate_passages)
+    
+   
+
+    #K = k1 * ((1 - b) + b * (document_length[pid] / average_document_length))
+    query_term_frequency = build_inverted_index(test_queries)
+
+    n1 = {qid: {} for qid in query_term_frequency.keys()}
+    n2 = {qid: {} for qid in query_term_frequency.keys()}
+    bm25 = {qid: {} for qid in query_term_frequency.keys()}
+
+    passages_tf = {}
+
+    for term, tfs in INVERTED_INDEX.items():
+        for pid, tf in tfs.items():
+            passages_tf[pid] = {}
+            
+    for term, tfs in INVERTED_INDEX.items():
+        for pid, tf in tfs.items(): 
+            passages_tf[pid][term] = passages_tf[pid].get(term,0) + INVERTED_INDEX[term][pid]
+
+    queries_tf = {qid: {} for qid in test_queries["qid"].tolist()}
+    for qid, query_terms in zip(test_queries["qid"].tolist(), task1.vocabulary):
+        term_freq = {}
+        for term in query_terms:
+            term_freq[term] = term_freq.get(term, 0) + 1
+        queries_tf[qid] = term_freq
+    
+
+    for qid, term_frequency in query_term_frequency.items():
+        for term in term_frequency.keys():
+            if term in INVERTED_INDEX.keys():
+                n1[qid][term] = len(INVERTED_INDEX[term])
+            else:
+                n1[qid][term] = 0
+
+    for qid, passages_tf in query_term_frequency.items():
+        terms = passages_tf.keys()
+        for pid, tf_t in INVERTED_INDEX.values():
+            for term in terms:
+                if term in  tf_t:
+                    n2[qid][pid][term] = passages_tf[pid][term]
+    
+    document_length = {}
+    for pid, row in passages_tf.items():
+        document_length[pid] = sum(row.values())
+
+    average_document_length = sum(document_length.values())/len(document_length)
+
+    for qid, passages in n2.items():
+        for pid, terms in passages.items():
+            score = 0
+            for term, n2_qid_pid_term in terms.items():
+                n1_qid_term = n1[qid][term]
+                K = k1 * ((1 - b) + b * (document_length[pid] / average_document_length))
+                term_score = math.log((n1_qid_term + 0.5) / (n2_qid_pid_term + 0.5)) * ((k1 + 1) * n2_qid_pid_term / (K + n2_qid_pid_term)) * ((k2 + 1) * query_term_frequency[qid][term] / (k2 + query_term_frequency[qid][term]))
+                score += term_score
+            bm25[qid][pid] = score
+
+    return bm25
+
+
 
 if __name__ == "__main__":
+    candidate_passages = pd.read_csv(task2.COLLECTION, sep='\t', header=None)
     test_queries = pd.read_csv(TEST_QUERIES, sep='\t', header=None)
     test_queries.columns = ["qid","text"]
     big_n = calculate_big_n(task2.COLLECTION)
 
-    cosine_scores = calculate_cosine_similarity(big_n, test_queries)
-    tf_idfs = output_d6_results(cosine_scores, test_queries)
+    passage_tfidf = calculate_passage_tfidf(big_n)
+    query_tfidf = calculate_query_tfidf(big_n, test_queries)
+
+    cosine_scores = calculate_cosine_similarity(big_n, test_queries, passage_tfidf, query_tfidf, candidate_passages)
+    tf_idfs = output_results(cosine_scores, test_queries)
     tf_idfs.to_csv(TFIDF_OUTPUT_FILE, index=False, header=False) # no headers
+
+    bm25 = calculate_bm25(candidate_passages)
+    bm25_scores = output_results(bm25, test_queries)
+    bm25_scores.to_csv("bm25.csv", index=False, header=False)
+
 
 
 
