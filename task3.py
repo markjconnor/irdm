@@ -152,10 +152,11 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
     for qid, passages in n2.items():
         for pid, terms in passages.items():
             score = 0
-            for term, n2_qid_pid_term in terms.items():
-                n1_qid_term = n1[qid][term]
+            for term, f_i in terms.items():
+                n_i = n1[qid][term]
+                qf_i = queries_tf[qid][term]
                 K = k1 * ((1 - b) + b * (document_length[pid] / average_document_length))
-                term_score = math.log((n1_qid_term + 0.5) / (n2_qid_pid_term + 0.5)) * ((k1 + 1) * n2_qid_pid_term / (K + n2_qid_pid_term)) * ((k2 + 1) * query_term_frequency[qid][term] / (k2 + query_term_frequency[qid][term]))
+                term_score = math.log( ((len(passages_tf) - n_i + 0.5) / (n_i + 0.5)) * ((k1 + 1) * f_i / (K + f_i)) * ((k2 + 1) * queries_tf[qid][term] / (k2 + queries_tf[qid][term])))
                 score += term_score
             bm25[qid][pid] = score
 
