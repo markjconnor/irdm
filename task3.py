@@ -63,7 +63,7 @@ def calculate_query_tfidf(big_n, test_queries):
         query_tfidf_vectors[qid] = {}
         for term, tf_q in query_tf.items():
             if term in inverted_index:
-                idf_t = math.log(big_n / len(inverted_index[term]), 10)
+                idf_t = math.log(big_n / len(inverted_index[term]), 10)  # TODO: justify this version of calculating IDF -> different ones exist
                 query_tfidf_vectors[qid][term] = tf_q * idf_t
 
     return query_tfidf_vectors
@@ -119,7 +119,7 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
     n_i = defaultdict(dict) # qid: {term: n_i}
     f_i = defaultdict(dict) # qid: {term: f_i}
     bm = defaultdict(dict)
-    qf_i = calculate_qf_i(test_queries)  # qf_i == tf_queries
+    qf_i = calculate_qf_i(test_queries) 
 
     # for each word in each query, how many documents does it appear in? (n_i)
     for qid, query_tf in qf_i.items():
