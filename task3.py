@@ -30,6 +30,22 @@ def calculate_passage_tfidf(big_n):
 
     return passage_tfidf_vectors
 
+def calculate_qf_i(test_queries):
+    qf_i = {}  # qid : {term: tf_q}
+
+    for _, row in test_queries.iterrows():
+        qid = row["qid"]
+        query = row["text"].split()
+
+        # compute query term frequencies
+        query_tf = {}
+        for term in query:
+            query_tf[term] = query_tf.get(term, 0) + 1
+    
+        qf_i[qid] = query_tf
+    
+    return qf_i
+
 def calculate_query_tfidf(big_n, test_queries):
     inverted_index = INVERTED_INDEX
     query_tfidf_vectors = {}  # qid : {term: tfidf}
@@ -80,7 +96,7 @@ def calculate_query_candidates(candidate_passages):
     
     candidates = defaultdict(set) # qid : set of candidate pids
     for _, row in candidate_passages.iterrows():
-        qid, pid = row[0], str(row[1]) # ensure pid is a string for consistent key types
+        qid, pid = row["qid"], str(row["pid"]) # ensure pid is a string for consistent key types
         candidates[qid].add(pid)
     return candidates
 
@@ -100,72 +116,71 @@ def output_results(table, test_queries):
     return output_df
 
 def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
-    query_candidates = calculate_query_candidates(candidate_passages)
-    
-   
+    n_i = defaultdict(dict) # qid: {term: n_i}
+    f_i = defaultdict(dict) # qid: {term: f_i}
+    bm = defaultdict(dict)
+    qf_i = calculate_qf_i(test_queries)  # qf_i == tf_queries
 
-    #K = k1 * ((1 - b) + b * (document_length[pid] / average_document_length))
-
-    n1 = {qid: {} for qid in query_candidates.keys()}
-    n2 = {qid: {} for qid in query_candidates.keys()}
-    bm25 = {qid: {} for qid in query_candidates.keys()}
-
-    passages_tf = {}
-
-    for term, tfs in INVERTED_INDEX.items():
-        for pid, tf in tfs.items():
-            passages_tf[pid] = {}
-            
-    for term, tfs in INVERTED_INDEX.items():
-        for pid, tf in tfs.items(): 
-            passages_tf[pid][term] = passages_tf[pid].get(term,0) + INVERTED_INDEX[term][pid]
-
-    queries_tf = {qid: {} for qid in test_queries["qid"].tolist()}
-    for qid, query_terms in zip(test_queries["qid"].tolist(), task1.get_vocabulary(task1.DATASET, None)):
-        term_freq = {}
-        for term in query_terms:
-            term_freq[term] = term_freq.get(term, 0) + 1
-        queries_tf[qid] = term_freq
-    
-
-    for qid, term_frequency in queries_tf.items():
-        for term in term_frequency.keys():
-            if term in INVERTED_INDEX.keys():
-                n1[qid][term] = len(INVERTED_INDEX[term])
+    # for each word in each query, how many documents does it appear in? (n_i)
+    for qid, query_tf in qf_i.items():
+        for word, tf_q in query_tf.items():
+            if word in INVERTED_INDEX:
+                n_i[qid][word] = len(INVERTED_INDEX[word])
             else:
-                n1[qid][term] = 0
+                n_i[qid][word] = 0
 
-    for qid, tf in queries_tf.items():
-        terms = tf.keys()
-        for pid, tf_t in passages_tf.items():
-            n2[qid][pid] = {}
-            for term in terms:
-                if term in tf_t.keys():
-                    n2[qid][pid][term] = passages_tf[pid][term]
+    # uninverted index is needed -> passage_tf = pid : {word: tf}
+    passage_tf = defaultdict(dict)
+    for word, pid_count in INVERTED_INDEX.items():
+        for pid, count in pid_count.items(): 
+            passage_tf[pid][word] = passage_tf[pid].get(pid,0) + INVERTED_INDEX[word][pid]
+
+    # for each word in each query, how many times does it appear in each document? (f_i)
+    for qid, query_tf in qf_i.items():
+        words = query_tf.keys()
+        for pid, word_tf in passage_tf.items():
+            f_i[qid][pid] = {}
+            for word in words:
+                if word in word_tf.keys():
+                    f_i[qid][pid][word] = passage_tf[pid][word]
     
+    
+    # calculate average document length
     document_length = {}
-    for pid, row in passages_tf.items():
+    for pid, row in passage_tf.items():
         document_length[pid] = sum(row.values())
 
     average_document_length = sum(document_length.values())/len(document_length)
 
-    for qid, passages in n2.items():
-        for pid, terms in passages.items():
-            score = 0
-            for term, f_i in terms.items():
-                n_i = n1[qid][term]
-                qf_i = queries_tf[qid][term]
+    qids = calculate_query_candidates(candidate_passages)
+    for qid, tfs in f_i.items():
+        pids = qids[qid]
+        for pid in pids:
+            bm[qid][pid] = 0
+            for word, f in tfs[pid].items():
+                n = n_i[qid][word]
+                qf = qf_i[qid][word]
                 K = k1 * ((1 - b) + b * (document_length[pid] / average_document_length))
-                term_score = math.log( ((len(passages_tf) - n_i + 0.5) / (n_i + 0.5)) * ((k1 + 1) * f_i / (K + f_i)) * ((k2 + 1) * queries_tf[qid][term] / (k2 + queries_tf[qid][term])))
-                score += term_score
-            bm25[qid][pid] = score
 
-    return bm25
+                idf = (len(passage_tf) - n + 0.5) / (n + 0.5)
+                p_tf = ((k1 + 1) * f) / (K + f)
+                q_tf = ((k2 + 1) * qf) / (k2 + qf)
 
+                bm[qid][pid] += math.log(idf) * p_tf * q_tf
+    
+    #reformat in order to output results correctly
+    flat_bm25 = {}
+    for qid, pid_scores in bm.items():
+        for pid, score in pid_scores.items():
+            flat_bm25[(qid, pid)] = score
+    return flat_bm25
 
+    return flat_bm25
+    
 
 if __name__ == "__main__":
     candidate_passages = pd.read_csv(task2.COLLECTION, sep='\t', header=None)
+    candidate_passages.columns = ["qid", "pid", "query", "passage"]
     test_queries = pd.read_csv(TEST_QUERIES, sep='\t', header=None)
     test_queries.columns = ["qid","text"]
     big_n = calculate_big_n(task2.COLLECTION)
@@ -178,7 +193,6 @@ if __name__ == "__main__":
     tf_idfs.to_csv(TFIDF_OUTPUT_FILE, index=False, header=False) # no headers
 
     bm25 = calculate_bm25(candidate_passages)
-    print(bm25)
     bm25_scores = output_results(bm25, test_queries)
     bm25_scores.to_csv("bm25.csv", index=False, header=False)
 

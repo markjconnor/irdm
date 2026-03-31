@@ -8,3 +8,5 @@
 settings.json
 *.pyc
 tfidf.csv
+venv/
+test.csv
