@@ -131,8 +131,8 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
 
     # uninverted index is needed -> passage_tf = pid : {word: tf}
     passage_tf = defaultdict(dict)
-    for word, pid_count in INVERTED_INDEX.items():
-        for pid, count in pid_count.items(): 
+    for word, tfs in INVERTED_INDEX.items():
+        for pid, count in tfs.items(): 
             passage_tf[pid][word] = passage_tf[pid].get(pid,0) + INVERTED_INDEX[word][pid]
 
     # for each word in each query, how many times does it appear in each document? (f_i)
