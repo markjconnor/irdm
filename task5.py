@@ -113,12 +113,10 @@ def optimise_bm25(candidate_passages, test_queries, train_data, inverted_index, 
     
     return best_params
 
-def evaluate_bm25(validation_data, best_params, stop_words):
-
-    val_inverted_index, val_doc_lengths = build_index_from_dataframe(validation_data, stop_words)
+def evaluate_bm25(validation_data, inverted_index, doc_lengths, best_params, stop_words):
     
-    val_total_docs = len(val_doc_lengths)
-    val_avg_dl = sum(val_doc_lengths.values()) / val_total_docs if val_total_docs > 0 else 1.0
+    val_total_docs = len(doc_lengths)
+    val_avg_dl = sum(doc_lengths.values()) / val_total_docs if val_total_docs > 0 else 1.0
     
     val_queries_df = validation_data[['qid', 'queries']].drop_duplicates().rename(columns={'queries': 'text'})
     val_queries_df['qid'] = val_queries_df['qid'].astype(str)
@@ -137,10 +135,10 @@ def evaluate_bm25(validation_data, best_params, stop_words):
     print(f"\nEvaluating with optimal parameters: k1={k1}, b={b}")
     
     bm25_results = task3.calculate_bm25_fast(
-        inverted_index=val_inverted_index,           
+        inverted_index=inverted_index,           
         candidate_passages=val_candidate_passages, 
         queries_df=val_queries_df, 
-        doc_lengths=val_doc_lengths, 
+        doc_lengths=doc_lengths, 
         avg_doc_length=val_avg_dl, 
         total_docs=val_total_docs, 
         k1=k1, k2=k2, b=b
@@ -151,7 +149,7 @@ def evaluate_bm25(validation_data, best_params, stop_words):
     num_queries = len(val_rankings)
     
     for qid, ideal_qrels in val_rankings.items():
-        qid_str = str(raw_qid) # make sure there's no type mismatch
+        qid_str = str(qid) # make sure there's no type mismatch
         
         query_scores = bm25_results.get(qid_str, {})
         predicted_pids = sorted(query_scores.keys(), key=lambda x: query_scores[x], reverse=True)
@@ -249,57 +247,57 @@ def get_average_embedding(text, model, stop_words):
 
 
 def train_model(train_data, stop_words):
-    # embed passages to word2vec, for each query rank top x passages, 
     model = api.load(MODEL_NAME)
 
+    # --- 1. BALANCED SAMPLING ---
+    print("Balancing dataset...")
+    
+    # Separate the relevant and irrelevant rows
+    relevant_df = train_data[train_data['relevancy'] > 0]
+    irrelevant_df = train_data[train_data['relevancy'] == 0]
+    
+    num_relevant = len(relevant_df)
+    
+    # Sample irrelevant data to be 3x the size of relevant data (1:3 ratio)
+    # random_state ensures reproducibility
+    sampled_irrelevant_df = irrelevant_df.sample(n=num_relevant * 3, random_state=42)
+    
+    # Combine them and shuffle the dataframe (frac=1 means 100% of the data)
+    balanced_data = pd.concat([relevant_df, sampled_irrelevant_df]).sample(frac=1, random_state=42).reset_index(drop=True)
+    
+    print(f"Original data size: {len(train_data)}")
+    print(f"Balanced data size: {len(balanced_data)} ({num_relevant} relevant, {len(sampled_irrelevant_df)} irrelevant)")
+
+    # --- 2. FEATURE EXTRACTION ---
     X_train = []
     y_train = []
-    for _, row in train_data.iterrows():
-        # 1. Get the average embedding for the query
+    
+    print("Extracting feature vectors...")
+    for _, row in balanced_data.iterrows():
         query_vec = get_average_embedding(row['queries'], model, stop_words)
-        
-        # 2. Get the average embedding for the passage
         passage_vec = get_average_embedding(row['passage'], model, stop_words)
         
-        # 3. Create the feature vector (X)
-        # Concatenating them creates a 600-dimensional vector [query_features, passage_features]
+        # --- REVERTED TO CONCATENATION (200 Features) ---
         feature_vector = np.concatenate([query_vec, passage_vec])
         
-        # 4. Get the label (y)
-        # The specification mentions a "binary classification task". 
-        # If your relevancy scores are already 0 and 1, we just take the score.
-        # If they are graded (e.g., 0 to 3), we need to binarize them (e.g., > 0 is True)
-        # Assuming they are binary or graded where > 0 is relevant:
-        label = 1 if row['relevancy'] > 0 else 0
+        label = 1 if row['relevancy'] == 1.0 else 0
         
         X_train.append(feature_vector)
         y_train.append(label)
         
-    # Convert lists to numpy arrays for machine learning
     X_train = np.array(X_train)
     y_train = np.array(y_train)
 
-    #max_samples = 100000 
-    #if len(X_train) > max_samples:
-    #    print(f"Downsampling from {len(X_train)} to {max_samples} for efficiency...")
-    #    indices = np.random.choice(len(X_train), max_samples, replace=False)
-    #    X_train = X_train[indices]
-    #    y_train = y_train[indices]
-    
     print(f"Training data prepared! X shape: {X_train.shape}, y shape: {y_train.shape}")
     
-    # Train the model using our functional implementation
-    chosen_learning_rate = 0.1
-    iterations = 1000
-    
+    # --- 3. TRAINING ---
     weights, bias = train_logistic_regression(
         X_train, y_train, 
-        learning_rate=chosen_learning_rate, 
-        num_iterations=iterations
+        learning_rate=0.1, 
+        num_epochs=20,        
+        batch_size=2048     
     )
     
-    # Return the learned parameters alongside the FastText model and stop words
-    # We will need all of these to evaluate the validation set later!
     return weights, bias, model, stop_words
 
 def sigmoid(z):
@@ -315,39 +313,45 @@ def compute_loss(y_true, y_pred):
     y2 = (1 - y_true) * np.log(1 - y_pred + epsilon)
     return -np.mean(y1 + y2)
 
-def train_logistic_regression(X, y, learning_rate=0.1, num_iterations=1000):
-    """Trains the model using Gradient Descent and returns the optimal weights and bias."""
+def train_logistic_regression(X, y, learning_rate=0.1, num_epochs=20, batch_size=2048):
+    """Trains using Mini-Batch Gradient Descent for massive datasets."""
     num_samples, num_features = X.shape
-    
-    # Initialize weights and bias to zeros
     weights = np.zeros(num_features)
     bias = 0.0
     
-    print(f"\nStarting training with Learning Rate: {learning_rate}")
+    print(f"\nStarting Mini-Batch training | Epochs: {num_epochs} | Batch Size: {batch_size}")
     
-    # Gradient Descent Loop
-    for i in range(num_iterations):
-        # --- Forward Pass ---
-        linear_model = np.dot(X, weights) + bias
-        y_predicted = sigmoid(linear_model)
+    for epoch in range(num_epochs):
+        indices = np.random.permutation(num_samples)
+        X_shuffled = X[indices]
+        y_shuffled = y[indices]
         
-        # --- Backward Pass (Gradients) ---
-        dz = y_predicted - y
-        dw = (1 / num_samples) * np.dot(X.T, dz)
-        db = (1 / num_samples) * np.sum(dz)
+        for start_idx in range(0, num_samples, batch_size):
+            end_idx = start_idx + batch_size
+            X_batch = X_shuffled[start_idx:end_idx]
+            y_batch = y_shuffled[start_idx:end_idx]
+            
+            # forward passs
+            linear_model = np.dot(X_batch, weights) + bias
+            y_predicted = sigmoid(linear_model)
+            
+            # backward pass
+            dz = y_predicted - y_batch
+            dw = (1 / len(y_batch)) * np.dot(X_batch.T, dz)
+            db = (1 / len(y_batch)) * np.sum(dz)
+            
+            # update weights
+            weights -= learning_rate * dw
+            bias -= learning_rate * db
+            
+        # 3. Calculate approximate loss at the end of the epoch
+        # (We calculate loss on a random sample of 10k rows to save time)
+        epoch_loss = compute_loss(y, predict_proba(X, weights, bias))
         
-        # --- Update Weights ---
-        weights -= learning_rate * dw
-        bias -= learning_rate * db
-        
-        # Track and print loss every 100 iterations
-        if i % 100 == 0:
-            loss = compute_loss(y, y_predicted)
-            print(f"Iteration {i:04d} | Loss: {loss:.4f}")
+        print(f"Epoch {epoch + 1:02d}/{num_epochs} complete | Approximate Loss: {epoch_loss:.4f}")
             
     print("Training complete!")
     return weights, bias
-
 def predict_proba(X, weights, bias):
     """Returns the probability that the passage is relevant (0 to 1)."""
     linear_model = np.dot(X, weights) + bias
@@ -361,16 +365,21 @@ if __name__ == "__main__":
     test_queries = pd.read_csv(TEST_QUERIES, sep='\t', header=None)
     test_queries.columns = ["qid","text"]
     stop_words = set(nltk.corpus.stopwords.words('english'))
-    #inverted_index, doc_lengths = build_index_from_dataframe(train_data)
-
-    #best_params = optimise_bm25(candidate_passages, test_queries, train_data, inverted_index, doc_lengths, total_docs, avg_dl)
-
     validation_data = pd.read_csv("validation-data.tsv", sep='\t')
     validation_data.columns = ["qid", "pid", "queries", "passage", "relevancy"]
-    #best_params = {"k1": 1.2, "k2": 100, "b": 0.75}
-    #evaluate_bm25(validation_data, best_params, stop_words)
+    
+    #optimise bm25 params
+    inverted_index, doc_lengths = build_index_from_dataframe(train_data, stop_words)
+    total_docs = len(doc_lengths)
+    avg_dl = sum(doc_lengths.values()) / total_docs if total_docs > 0 else 1.0
+    best_params = optimise_bm25(candidate_passages, test_queries, train_data, inverted_index, doc_lengths, total_docs, avg_dl)
 
-    weights, bias, ft_model, stop_word=train_model(train_data, stop_words)
+
+    #evaluate bm25 with optimised params
+    evaluate_bm25(validation_data, inverted_index, doc_lengths, best_params, stop_words)
+
+    #train linear regression model
+    weights, bias, ft_model, stop_words=train_model(train_data, stop_words)
     print("\n--- CHECKING OUTPUTS ---")
     print(f"Weights shape: {weights.shape} (Should be 200)")
     print(f"Bias value:    {bias:.4f}")
