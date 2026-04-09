@@ -115,7 +115,7 @@ def output_results(table, test_queries):
     output_df = pd.DataFrame(output)
     return output_df
 
-def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
+def calculate_bm25(candidate_passages, test_queries, k1=1.5, k2=100, b=0.75):
     n_i = defaultdict(dict) # qid: {term: n_i}
     f_i = defaultdict(dict) # qid: {term: f_i}
     bm = defaultdict(dict)
@@ -133,7 +133,7 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
     passage_tf = defaultdict(dict)
     for word, tfs in INVERTED_INDEX.items():
         for pid, count in tfs.items(): 
-            passage_tf[pid][word] = passage_tf[pid].get(pid,0) + INVERTED_INDEX[word][pid]
+            passage_tf[pid][word] = count
 
     # for each word in each query, how many times does it appear in each document? (f_i)
     for qid, query_tf in qf_i.items():
@@ -157,12 +157,12 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
         pids = qids[qid]
         for pid in pids:
             bm[qid][pid] = 0
-            for word, f in tfs[pid].items():
+            for word, f in tfs.get(pid, {}).items():
                 n = n_i[qid][word]
                 qf = qf_i[qid][word]
                 K = k1 * ((1 - b) + b * (document_length[pid] / average_document_length))
 
-                idf = (len(passage_tf) - n + 0.5) / (n + 0.5)
+                idf = math.log((len(passage_tf) - n + 0.5) / (n + 0.5) + 1.0)
                 p_tf = ((k1 + 1) * f) / (K + f)
                 q_tf = ((k2 + 1) * qf) / (k2 + qf)
 
@@ -173,10 +173,55 @@ def calculate_bm25(candidate_passages, k1=1.5, k2=100, b=0.75):
     for qid, pid_scores in bm.items():
         for pid, score in pid_scores.items():
             flat_bm25[(qid, pid)] = score
-    return flat_bm25
+    return bm
 
-    return flat_bm25
+def calculate_bm25_fast(inverted_index, candidate_passages, queries_df, doc_lengths, total_docs, avg_doc_length, k1=1.5, k2=100, b=0.75):
+    bm_scores = defaultdict(dict)
     
+    # 1. Get query term frequencies (qf)
+    qf_i = calculate_qf_i(queries_df) 
+
+    for qid, query_terms in qf_i.items():
+        # Only consider PIDs that are valid candidates for this query
+        targets = set(candidate_passages.get(qid, []))
+        
+        if not targets:
+            print(f"Warning: No candidate passages found for QID {qid}")
+            continue
+
+        for word, qf in query_terms.items():
+            if word not in inverted_index:
+                continue
+            
+            # 2. Pre-calculate IDF for this query word
+            n = len(inverted_index[word])
+            idf = math.log((total_docs - n + 0.5) / (n + 0.5) + 1.0)
+            
+            # 3. Only look at documents containing this word
+            postings = inverted_index[word]
+            for pid, f in postings.items():
+                if pid in targets:
+                    dl = doc_lengths[pid]
+                    
+                    # BM25 Core Formula
+                    K = k1 * ((1 - b) + b * (dl / avg_doc_length))
+                    p_tf = ((k1 + 1) * f) / (K + f)
+                    q_tf = ((k2 + 1) * qf) / (k2 + qf)
+                    
+                    # Increment the score for this document
+                    if pid not in bm_scores[qid]:
+                        bm_scores[qid][pid] = 0
+                    bm_scores[qid][pid] += idf * p_tf * q_tf
+                    
+    return bm_scores
+
+def flatten_bm25(bm):
+    #reformat in order to output results correctly
+    flat_bm25 = {}
+    for qid, pid_scores in bm.items():
+        for pid, score in pid_scores.items():
+            flat_bm25[(qid, pid)] = score
+    return flat_bm25
 
 if __name__ == "__main__":
     candidate_passages = pd.read_csv(task2.COLLECTION, sep='\t', header=None)
@@ -185,6 +230,8 @@ if __name__ == "__main__":
     test_queries.columns = ["qid","text"]
     big_n = calculate_big_n(task2.COLLECTION)
 
+    
+
     passage_tfidf = calculate_passage_tfidf(big_n)
     query_tfidf = calculate_query_tfidf(big_n, test_queries)
 
@@ -192,8 +239,9 @@ if __name__ == "__main__":
     tf_idfs = output_results(cosine_scores, test_queries)
     tf_idfs.to_csv(TFIDF_OUTPUT_FILE, index=False, header=False) # no headers
 
-    bm25 = calculate_bm25(candidate_passages)
-    bm25_scores = output_results(bm25, test_queries)
+    bm25 = calculate_bm25(candidate_passages, test_queries)
+    flat_bm25 = flatten_bm25(bm25)
+    bm25_scores = output_results(flat_bm25, test_queries)
     bm25_scores.to_csv("bm25.csv", index=False, header=False)
 
 
