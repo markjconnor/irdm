@@ -2,8 +2,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import nltk
 from nltk.corpus import stopwords
+import string
+import re
 nltk.download('stopwords')
-
 DATASET="passage-collection.txt"
 
 def get_vocabulary(dataset, stop_words):
@@ -12,7 +13,7 @@ def get_vocabulary(dataset, stop_words):
         text = f.read()
         # TODO: In report, TEXT PRE-PROCESSING CHOICE: Chose to ignore case sensitivity
         text = text.lower()
-        words = text.split()
+        words = re.findall(r'[a-z0-9]+', text)
         if stop_words:
             words = [word for word in words if word not in stop_words]
     vocabulary = set(words)
@@ -100,6 +101,13 @@ if __name__ == "__main__":
 
     stop_words = stopwords.words('english')
     vocabulary2 = get_vocabulary(DATASET, stop_words)
+
+    sorted_vocab = sorted(list(vocabulary2))
+
+    with open("vocabulary_check.txt", "w", encoding="utf-8") as f:
+        for word in sorted_vocab:
+            f.write(f"{word}\n")
+
     tf2 = count_term_frequency(DATASET, stop_words)
     df2 = construct_df(tf2)
     plot_figure_3(df, df2)
