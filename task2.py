@@ -1,5 +1,6 @@
 import task1
 import csv
+import re
 from collections import defaultdict
 VOCAB_DATASET = task1.DATASET
 COLLECTION = "candidate-passages-top1000.tsv"
@@ -22,7 +23,8 @@ def build_inverted_index(dataset):
         tsv_reader = csv.reader(file, delimiter='\t')
         for row in tsv_reader:
             pid = row[1]
-            passage = row[3].lower().split()
+            passage = row[3].lower()
+            passage = re.findall(r'[a-z0-9]+', passage)
             
             term_frequencies = defaultdict(int) 
             for word in passage:
@@ -40,7 +42,7 @@ def query_inverted_index(query_term, inverted_index):
 
 
 if __name__ == "__main__":
-    inverted_index = build_inverted_index()
+    inverted_index = build_inverted_index(COLLECTION)
     #TODO: Remove example query
     #print("inverted_index[\"tantalising\"] = ", inverted_index["tantalising"])
     #query_term = "tantalising"
