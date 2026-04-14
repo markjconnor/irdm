@@ -4,7 +4,7 @@ import pandas as pd
 from collections import defaultdict
 import math
 
-INVERTED_INDEX = task2.build_inverted_index(task2.COLLECTION) # word : [(pid, tf_t)]
+INVERTED_INDEX =task3.INVERTED_INDEX # word : [(pid, tf_t)]
 
 def calculate_smoothing(candidate_passages, test_queries):
     # M_D = f_w_D / len(D)
@@ -16,8 +16,8 @@ def calculate_smoothing(candidate_passages, test_queries):
     # uninverted index is needed -> passage_tf = pid : {word: tf}
     passage_tf = defaultdict(dict)
     for word, pid_tfs in INVERTED_INDEX.items():
-        for pid, _ in pid_tfs.items(): 
-            passage_tf[pid][word] = passage_tf[pid].get(word,0) + INVERTED_INDEX[word][pid]
+        for pid, count in pid_tfs.items(): 
+            passage_tf[pid][word] = count
 
 
     # for each word in each query, how many times does it appear in each document? (f_i)
