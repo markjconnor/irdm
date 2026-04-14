@@ -169,15 +169,14 @@ def evaluate_bm25(validation_data, inverted_index, doc_lengths, best_params, sto
 def evaluate_logistic_regression(validation_data, weights, bias, model, stop_words):
     print("\nEvaluating logistic regression model...")
     
-    # 1. Dictionary to hold our predictions: { qid: { pid: probability_score } }
+    # 1. predictions dict { qid: { pid: probability_score } }
     lr_scores = defaultdict(dict)
     
-    # 2. Generate predictions for all passage/query pairs in validation set
     for _, row in validation_data.iterrows():
         qid = str(row['qid'])
         pid = str(row['pid'])
         
-        # Extract features exactly as we did in training (Concatenation -> 200 features)
+        # Extract features
         query_vec = get_average_embedding(row['queries'], model, stop_words)
         passage_vec = get_average_embedding(row['passage'], model, stop_words)
         feature_vector = np.concatenate([query_vec, passage_vec])
@@ -343,33 +342,33 @@ def train_model(train_data, stop_words):
     
     weights, bias = train_logistic_regression(
         X_train, y_train, 
-        learning_rate=0.1, 
+        learning_rate=1.0, 
         num_iterations=1000   
     )
     
     return weights, bias, model, stop_words
 
 def sigmoid(z):
-    """Squashes any number to a probability between 0 and 1."""
+    #Squashes any number to a probability between 0 and 1.
     # np.clip prevents math overflow errors if z gets too large/small
     z = np.clip(z, -250, 250)
     return 1 / (1 + np.exp(-z))
 
 def compute_loss(y_true, y_pred):
-    """Calculates Binary Cross-Entropy Loss."""
+    # calculates Binary Cross-Entropy Loss
     epsilon = 1e-9 # Prevents log(0) errors
     y1 = y_true * np.log(y_pred + epsilon)
     y2 = (1 - y_true) * np.log(1 - y_pred + epsilon)
     return -np.mean(y1 + y2)
 
 def train_logistic_regression(X, y, learning_rate=0.1, num_iterations=1000):
-    """Trains the model using standard Batch Gradient Descent on the entire dataset."""
+    #Trains the model using Gradient Descent on the entire dataset
     num_samples, num_features = X.shape
     
     weights = np.zeros(num_features)
     bias = 0.0
     
-    print(f"\nStarting standard Gradient Descent | Iterations: {num_iterations} | LR: {learning_rate}")
+    print(f"\nStarting Gradient Descent | Iterations: {num_iterations} | Learning Rate= {learning_rate}")
     
     for i in range(num_iterations):
         # forward pass
@@ -393,7 +392,7 @@ def train_logistic_regression(X, y, learning_rate=0.1, num_iterations=1000):
     return weights, bias
 
 def predict_proba(X, weights, bias):
-    """Returns the probability that the passage is relevant (0 to 1)."""
+    #Returns the probability that the passage is relevant [0-1].
     linear_model = np.dot(X, weights) + bias
     return sigmoid(linear_model)
 
@@ -409,13 +408,13 @@ if __name__ == "__main__":
     validation_data.columns = ["qid", "pid", "queries", "passage", "relevancy"]
     
     #optimise bm25 params
-    inverted_index, doc_lengths = build_index_from_dataframe(train_data, stop_words)
-    total_docs = len(doc_lengths)
-    avg_dl = sum(doc_lengths.values()) / total_docs if total_docs > 0 else 1.0
-    best_params = optimise_bm25(candidate_passages, test_queries, train_data, inverted_index, doc_lengths, total_docs, avg_dl)
+    #inverted_index, doc_lengths = build_index_from_dataframe(train_data, stop_words)
+    #total_docs = len(doc_lengths)
+    #avg_dl = sum(doc_lengths.values()) / total_docs if total_docs > 0 else 1.0
+    #best_params = optimise_bm25(candidate_passages, test_queries, train_data, inverted_index, doc_lengths, total_docs, avg_dl)
 
     #evaluate bm25 with optimised params
-    evaluate_bm25(validation_data, inverted_index, doc_lengths, best_params, stop_words)
+    #evaluate_bm25(validation_data, inverted_index, doc_lengths, best_params, stop_words)
 
     #train linear regression model
     weights, bias, ft_model, stop_words=train_model(train_data, stop_words)
