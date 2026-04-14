@@ -11,7 +11,6 @@ MODEL_NAME = "glove-wiki-gigaword-100" # Previously: fasttext-wiki-news-subwords
 TEST_QUERIES = task3.TEST_QUERIES
 
 def calculate_average_precision(predicted_pids, ideal_qrels, k=25):
-    """Calculates Average Precision at cutoff k."""
     num_relevant_found = 0
     precision_sum = 0.0
     
@@ -61,9 +60,9 @@ def optimise_bm25(candidate_passages, test_queries, train_data, inverted_index, 
         qid_str = str(raw_qid)
         train_candidate_passages[qid_str] = [str(pid) for pid in group['pid']]
 
-    k1_range = [1.2, 1.5, 1.7]
+    k1_range = [1.2, 1.6, 2.0]
     k2 = 100
-    b_range = [0.65, 0.75, 0.85]
+    b_range = [0.5, 0.65, 0.8]
     
     best_ndcg = -1.0 
     best_params = None
@@ -167,6 +166,60 @@ def evaluate_bm25(validation_data, inverted_index, doc_lengths, best_params, sto
     
     return mean_ap, mean_ndcg
 
+def evaluate_logistic_regression(validation_data, weights, bias, model, stop_words):
+    print("\nEvaluating logistic regression model...")
+    
+    # 1. Dictionary to hold our predictions: { qid: { pid: probability_score } }
+    lr_scores = defaultdict(dict)
+    
+    # 2. Generate predictions for all passage/query pairs in validation set
+    for _, row in validation_data.iterrows():
+        qid = str(row['qid'])
+        pid = str(row['pid'])
+        
+        # Extract features exactly as we did in training (Concatenation -> 200 features)
+        query_vec = get_average_embedding(row['queries'], model, stop_words)
+        passage_vec = get_average_embedding(row['passage'], model, stop_words)
+        feature_vector = np.concatenate([query_vec, passage_vec])
+        
+        # Predict the probability of relevance
+        prob = predict_proba(feature_vector, weights, bias)
+        
+        # Store the score
+        lr_scores[qid][pid] = prob
+
+    # 3. Get ideal rankings from validation data
+    val_rankings = get_train_rankings(validation_data)
+    
+    total_ap = 0.0
+    total_ndcg = 0.0
+    num_queries = len(val_rankings)
+    
+    # 4. Calculate MAP and NDCG
+    for qid, ideal_qrels in val_rankings.items():
+        qid_str = str(qid)
+        
+        # Get the scores for this query
+        query_scores = lr_scores.get(qid_str, {})
+        
+        # Sort PIDs by predicted probability descending (highest probability first)
+        predicted_pids = sorted(query_scores.keys(), key=lambda x: query_scores[x], reverse=True)
+        
+        # Safe QRELs mapping
+        safe_ideal_qrels = {str(p_id): rel for p_id, rel in ideal_qrels.items()}
+        
+        total_ap += calculate_average_precision(predicted_pids, safe_ideal_qrels, k=25)
+        total_ndcg += calculate_ndcg(predicted_pids, safe_ideal_qrels, k=25)
+        
+    mean_ap = total_ap / num_queries
+    mean_ndcg = total_ndcg / num_queries
+    
+    print(f"Logistic Regression MAP@25:  {mean_ap:.4f}")
+    print(f"Logistic Regression NDCG@25: {mean_ndcg:.4f}")
+    print("="*40 + "\n")
+    
+    return mean_ap, mean_ndcg
+
 def get_train_rankings(train_data):
     
     training_rankings = {}  #  qid: { pid: [relevance] } 
@@ -245,7 +298,6 @@ def get_average_embedding(text, model, stop_words):
     # 6. Calculate the column-wise mean (averages all vectors into one)
     return np.mean(vectors, axis=0)
 
-
 def train_model(train_data, stop_words):
     model = api.load(MODEL_NAME)
 
@@ -259,7 +311,7 @@ def train_model(train_data, stop_words):
     num_relevant = len(relevant_df)
     
     # Sample irrelevant data to be 3x the size of relevant data (1:3 ratio)
-    # random_state ensures reproducibility
+    # random_state keeps a set seed so this is reproduceable
     sampled_irrelevant_df = irrelevant_df.sample(n=num_relevant * 3, random_state=42)
     
     # Combine them and shuffle the dataframe (frac=1 means 100% of the data)
@@ -268,7 +320,6 @@ def train_model(train_data, stop_words):
     print(f"Original data size: {len(train_data)}")
     print(f"Balanced data size: {len(balanced_data)} ({num_relevant} relevant, {len(sampled_irrelevant_df)} irrelevant)")
 
-    # --- 2. FEATURE EXTRACTION ---
     X_train = []
     y_train = []
     
@@ -277,7 +328,7 @@ def train_model(train_data, stop_words):
         query_vec = get_average_embedding(row['queries'], model, stop_words)
         passage_vec = get_average_embedding(row['passage'], model, stop_words)
         
-        # --- REVERTED TO CONCATENATION (200 Features) ---
+        # concatenate (we get 200 features)
         feature_vector = np.concatenate([query_vec, passage_vec])
         
         label = 1 if row['relevancy'] == 1.0 else 0
@@ -290,12 +341,10 @@ def train_model(train_data, stop_words):
 
     print(f"Training data prepared! X shape: {X_train.shape}, y shape: {y_train.shape}")
     
-    # --- 3. TRAINING ---
     weights, bias = train_logistic_regression(
         X_train, y_train, 
         learning_rate=0.1, 
-        num_epochs=20,        
-        batch_size=2048     
+        num_iterations=1000   
     )
     
     return weights, bias, model, stop_words
@@ -313,45 +362,36 @@ def compute_loss(y_true, y_pred):
     y2 = (1 - y_true) * np.log(1 - y_pred + epsilon)
     return -np.mean(y1 + y2)
 
-def train_logistic_regression(X, y, learning_rate=0.1, num_epochs=20, batch_size=2048):
-    """Trains using Mini-Batch Gradient Descent for massive datasets."""
+def train_logistic_regression(X, y, learning_rate=0.1, num_iterations=1000):
+    """Trains the model using standard Batch Gradient Descent on the entire dataset."""
     num_samples, num_features = X.shape
+    
     weights = np.zeros(num_features)
     bias = 0.0
     
-    print(f"\nStarting Mini-Batch training | Epochs: {num_epochs} | Batch Size: {batch_size}")
+    print(f"\nStarting standard Gradient Descent | Iterations: {num_iterations} | LR: {learning_rate}")
     
-    for epoch in range(num_epochs):
-        indices = np.random.permutation(num_samples)
-        X_shuffled = X[indices]
-        y_shuffled = y[indices]
+    for i in range(num_iterations):
+        # forward pass
+        linear_model = np.dot(X, weights) + bias
+        y_predicted = sigmoid(linear_model)
         
-        for start_idx in range(0, num_samples, batch_size):
-            end_idx = start_idx + batch_size
-            X_batch = X_shuffled[start_idx:end_idx]
-            y_batch = y_shuffled[start_idx:end_idx]
-            
-            # forward passs
-            linear_model = np.dot(X_batch, weights) + bias
-            y_predicted = sigmoid(linear_model)
-            
-            # backward pass
-            dz = y_predicted - y_batch
-            dw = (1 / len(y_batch)) * np.dot(X_batch.T, dz)
-            db = (1 / len(y_batch)) * np.sum(dz)
-            
-            # update weights
-            weights -= learning_rate * dw
-            bias -= learning_rate * db
-            
-        # 3. Calculate approximate loss at the end of the epoch
-        # (We calculate loss on a random sample of 10k rows to save time)
-        epoch_loss = compute_loss(y, predict_proba(X, weights, bias))
+        # backward pass
+        dz = y_predicted - y
+        dw = (1 / num_samples) * np.dot(X.T, dz)
+        db = (1 / num_samples) * np.sum(dz)
         
-        print(f"Epoch {epoch + 1:02d}/{num_epochs} complete | Approximate Loss: {epoch_loss:.4f}")
+        weights -= learning_rate * dw
+        bias -= learning_rate * db
+        
+        # tsrack loss every 100 iterations and final iteration
+        if i % 100 == 0 or i == num_iterations - 1:
+            loss = compute_loss(y, y_predicted)
+            print(f"Iteration {i:04d} | Loss: {loss:.4f}")
             
     print("Training complete!")
     return weights, bias
+
 def predict_proba(X, weights, bias):
     """Returns the probability that the passage is relevant (0 to 1)."""
     linear_model = np.dot(X, weights) + bias
@@ -374,12 +414,13 @@ if __name__ == "__main__":
     avg_dl = sum(doc_lengths.values()) / total_docs if total_docs > 0 else 1.0
     best_params = optimise_bm25(candidate_passages, test_queries, train_data, inverted_index, doc_lengths, total_docs, avg_dl)
 
-
     #evaluate bm25 with optimised params
     evaluate_bm25(validation_data, inverted_index, doc_lengths, best_params, stop_words)
 
     #train linear regression model
     weights, bias, ft_model, stop_words=train_model(train_data, stop_words)
-    print("\n--- CHECKING OUTPUTS ---")
-    print(f"Weights shape: {weights.shape} (Should be 200)")
-    print(f"Bias value:    {bias:.4f}")
+    print("CHECKING OUTPUTS")
+    print(f"Weights shape: {weights.shape}")
+    print(f"Bias value: {bias:.4f}")
+
+    evaluate_logistic_regression(validation_data, weights, bias, ft_model, stop_words)
