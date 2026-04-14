@@ -44,13 +44,13 @@ def query_inverted_index(query_term, inverted_index):
 if __name__ == "__main__":
     inverted_index = build_inverted_index(COLLECTION)
     #TODO: Remove example query
-    #print("inverted_index[\"tantalising\"] = ", inverted_index["tantalising"])
-    #query_term = "tantalising"
-    print("inverted_index[\"happy\"] = ", inverted_index["happy"])
-    query_term = "happy"
-    result = query_inverted_index(query_term, inverted_index)
-    print("length of results= ", len(result))
-    print(result)
+   #print("inverted_index[\"tantalising\"] = ", inverted_index["tantalising"])
+   #query_term = "tantalising"
+   #print("inverted_index[\"happy\"] = ", inverted_index["happy"])
+   #query_term = "happy"
+   #result = query_inverted_index(query_term, inverted_index)
+   #print("length of results= ", len(result))
+   #print(result)
 
 
 
