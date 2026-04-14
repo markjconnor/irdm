@@ -81,8 +81,8 @@ words? Justify your answer by depicting (Figure 3) and quantifying this differen
 """
 def plot_figure_3(df, df_stop_words_removed):
     plt.figure(figsize=(10, 6))
-    plt.loglog(df["Rank"], df["Normalised Frequency"], marker='o', label='Observed Data')
-    plt.loglog(df_stop_words_removed["Rank"], df_stop_words_removed["Normalised Frequency"], marker='o', label='Observed Data (Stop Words Removed)')
+    plt.loglog(df["Rank"], df["Normalised Frequency"], marker='o', label='Observed Data', color='tab:blue')
+    plt.loglog(df_stop_words_removed["Rank"], df_stop_words_removed["Normalised Frequency"], marker='o', label='Observed Data (Stop Words Removed)', color='indianred', alpha=0.7)
     plt.xlabel('Rank')
     plt.ylabel('Normalised Frequency')
     plt.title("Zipf's Law: Term Frequency vs Rank (Stop Words Removed)")
@@ -101,13 +101,6 @@ if __name__ == "__main__":
 
     stop_words = stopwords.words('english')
     vocabulary2 = get_vocabulary(DATASET, stop_words)
-
-    sorted_vocab = sorted(list(vocabulary2))
-
-    with open("vocabulary_check.txt", "w", encoding="utf-8") as f:
-        for word in sorted_vocab:
-            f.write(f"{word}\n")
-
     tf2 = count_term_frequency(DATASET, stop_words)
     df2 = construct_df(tf2)
     plot_figure_3(df, df2)
